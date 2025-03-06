@@ -34,7 +34,7 @@ class TicketBooking:
             return ["Cat 1", "Cat1"]
         elif "درج" in self.category and "اني" in self.category:
             return ["Cat 2", "Cat2"]
-        elif "تالت" in self.category or "ثالث" in self.category:
+        elif "تالت" in self.category and "ثالث" in self.category:
             return ["Cat 3", "Cat3"]
         elif "مقصو" in self.category:
             return ["VIP"]
@@ -49,8 +49,8 @@ class TicketBooking:
         return {
             'سماع': {'team_name': 'الاسماعيلى', 'eng_team': 'ISMAILY SC', 'categoryName': 'ISMAILY', 'teamid': '182'},
             'زمالك': {'team_name': 'الزمالك', 'eng_team': 'Zamalek SC', 'categoryName': 'Zamalek', 'teamid': '79'},
-            'هل': {'team_name': 'الأهلى', 'eng_team': 'Al Ahly FC', 'categoryName': 'Al-Ahly', 'teamid': '77'},
-            'مصر': {'team_name': 'النادي المصري للألعاب الرياضية', 'eng_team': 'Al-Masry SC', 'categoryName': 'Al-Masry', 'teamid': '186'}
+            'هل': {'team_name': 'الأهلى', 'eng_team': 'Al Ahly FC', 'categoryName': 'Ahly', 'teamid': '77'},
+            'مصر': {'team_name': 'النادي المصري للألعاب الرياضية', 'eng_team': 'Al-Masry SC', 'categoryName': 'Al-Masry'}
         }
 
     def find_team_info(self):
@@ -105,25 +105,25 @@ class TicketBooking:
         exit()
 
     def get_ticket_info(self):
-        r1 = self.s.get(f'https://tazkarti.com/data/TicketPrice-AvailableSeats-{self.match_id}.json', headers=self.get_headers()).text
-        r1_data = json.loads(r1)
-
-        for category in r1_data['data']:
-            if category['categoryName'] == self.category_name:
-                self.category_id = category['categoryId']
-                self.team_id = category['teamId']
-                self.match_team_zone_id = category['matchTeamzoneId']
-                self.price = category['price']
-                return
-            else:
-                for user_seat_location in self.possible_seat_locations:
-                    if user_seat_location in category['categoryName'] and int(self.team_id) == category['teamId']:
-                        self.category_id = category['categoryId']
-                        self.team_id = category['teamId']
-                        self.match_team_zone_id = category['matchTeamzoneId']
-                        self.price = category['price']
-                        return
-
+	    r1 = self.s.get(f'https://tazkarti.com/data/TicketPrice-AvailableSeats-{self.match_id}.json', headers=self.get_headers()).text
+	    r1_data = json.loads(r1)
+	
+	    for category in r1_data['data']:
+	        if category['categoryName'].strip().lower() == self.category_name.strip().lower():
+	            self.category_id = category['categoryId']
+	            self.team_id = category['teamId']
+	            self.match_team_zone_id = category['matchTeamzoneId']
+	            self.price = category['price']
+	            return
+	        else:
+	            for user_seat_location in self.possible_seat_locations:
+	                if user_seat_location.lower() in category['categoryName'].strip().lower() and int(self.team_id) == category['teamId']:
+	                    self.category_id = category['categoryId']
+	                    self.team_id = category['teamId']
+	                    self.match_team_zone_id = category['matchTeamzoneId']
+	                    self.price = category['price']
+	                    return
+	
     def login_and_book_tickets(self):
         headers = self.get_headers()
         headers.update({'Content-Type': 'application/json'})
@@ -137,25 +137,31 @@ class TicketBooking:
         self.book_seats(tok)
 
     def book_seats(self, token):
-        h2 = self.get_headers()
-        h2['Authorization'] = f'Bearer {token}'
-        
-        json_data2 = {
-            'stadiumId': 1,
-            'matchId': int(self.match_id),
-            'teamId': int(self.team_id),
-            'lockedSeatsList': [
-                {
-                    'categoryId': int(self.category_id),
-                    'countSeats': int(self.seats),
-                    'price': self.price,
-                    'matchTeamZoneId': int(self.match_team_zone_id),
-                },
-            ],
-        }
-        
-        r2 = self.s.post('https://tazkarti.com/booksprt/BookingTickets/addSeats', headers=h2, json=json_data2).text
-        self.handle_ticket_response(r2, token)
+	    print(f"match_id: {self.match_id}, team_id: {self.team_id}, category_id: {self.category_id}, match_team_zone_id: {self.match_team_zone_id}, seats: {self.seats}")
+	
+	    if None in [self.match_id, self.team_id, self.category_id, self.match_team_zone_id, self.seats]:
+	        raise ValueError("Some required values are None. Check the previous steps.")
+	
+	    h2 = self.get_headers()
+	    h2['Authorization'] = f'Bearer {token}'
+	    
+	    json_data2 = {
+	        'stadiumId': 1,
+	        'matchId': int(self.match_id),
+	        'teamId': int(self.team_id),
+	        'lockedSeatsList': [
+	            {
+	                'categoryId': int(self.category_id),
+	                'countSeats': int(self.seats),
+	                'price': self.price,
+	                'matchTeamZoneId': int(self.match_team_zone_id),
+	            },
+	        ],
+	    }
+	    
+	    r2 = self.s.post('https://tazkarti.com/booksprt/BookingTickets/addSeats', headers=h2, json=json_data2).text
+	    self.handle_ticket_response(r2, token)
+	
 
     def handle_ticket_response(self, response, token):
         guid = response.split('seatGuid":"')[1].split('"')[0]
