@@ -12,14 +12,14 @@ class TicketBooking:
         self.load_user_data(user_data_file)
         self.possible_seat_locations = self.determine_seat_locations()
         self.teams = self.initialize_teams()
-        self.found = False
-        self.team_name = "2929292922"
+        self.find_team_info()
+        self.find_team_opposite() 
         self.match_id = None
         self.category_id = None
         self.team_id = None
         self.match_team_zone_id = None
         self.price = None
-    
+
     def load_user_data(self, user_data_file):
         with open(user_data_file, encoding="utf-8") as f:
             lines = f.read().splitlines()
@@ -28,6 +28,7 @@ class TicketBooking:
             self.search_word = lines[2]
             self.seats = lines[3]
             self.category = lines[4]
+            self.opposite = lines[5] if len(lines) > 1 else ""
 
     def determine_seat_locations(self):
         if "درج" in self.category and "ول" in self.category:
@@ -50,33 +51,49 @@ class TicketBooking:
             'سماع': {'team_name': 'الاسماعيلى', 'eng_team': 'ISMAILY SC', 'categoryName': 'ISMAILY', 'teamid': '182'},
             'زمالك': {'team_name': 'الزمالك', 'eng_team': 'Zamalek SC', 'categoryName': 'Zamalek', 'teamid': '79'},
             'هل': {'team_name': 'الأهلى', 'eng_team': 'Al Ahly FC', 'categoryName': 'Ahly', 'teamid': '77'},
-            'مصر': {'team_name': 'النادي المصري للألعاب الرياضية', 'eng_team': 'Al-Masry SC', 'categoryName': 'Al-Masry'}
+            'مصر': {'team_name': 'النادي المصري للألعاب الرياضية', 'eng_team': 'Al-Masry SC', 'categoryName': 'Al-Masry'},
+            'بترو': {'team_name': 'بتروجت', 'eng_team': 'Petrojet', 'categoryName': 'Petrojet', 'teamid': '310'}
         }
 
     def find_team_info(self):
+
         for key in self.teams:
             if key in self.search_word:
-                self.found = True
                 team_info = self.teams[key]
                 self.team_name = team_info['team_name']
                 self.eng_team = team_info['eng_team']
                 self.category_name = team_info['categoryName']
                 self.team_id = team_info['teamid']
                 return
-        #print("Team not found in the search word.")
+
+    def find_team_opposite(self):
+        if not self.opposite.strip():
+            self.opposite_eng_team = ""
+            return
+        for key in self.teams:
+            if key in self.opposite:
+                team_info = self.teams[key]
+                self.opposite_am_name = team_info['team_name']
+                self.opposite_eng_team = team_info['eng_team']
+                self.opposite_category_name = team_info['categoryName']
+                self.opposite_am_id = team_info['teamid']
+                return
+        self.opposite_eng_team = self.opposite
 
     def wait_for_registration(self):
         while True:
             try:
                 h = self.get_headers()
                 res = self.s.get('https://tazkarti.com/data/matches-list-json.json', headers=h).text
-                if self.team_name in res:
-                    return res
+                if not self.opposite_eng_team.strip():
+                    if self.team_name in res:
+                        return res
                 else:
-                    self.wait += 1
-                    print(f'\rPlease wait until registration opens ... Do not close the program: {self.wait}', end='')
-
-                    time.sleep(2)
+                    if self.team_name in res and self.opposite_eng_team in res:
+                        return res
+                self.wait += 1
+                print(f'\rPlease wait until registration opens ... Do not close the program: {self.wait}', end='')
+                time.sleep(2)
             except Exception as ee:
                 print(ee)
 
@@ -96,34 +113,44 @@ class TicketBooking:
         }
 
     def get_match_id(self, res):
-        matches = json.loads(res)
-        for match in matches:
-            if match["teamName1"] == self.eng_team or match["teamName2"] == self.eng_team:
-                if match.get('matchStatus') == 1:
-                    self.match_id = match["matchId"]
-                    return
-        exit()
+        while True:
+            matches = json.loads(res)
+            for match in matches:
+                if self.opposite_eng_team.strip():
+                    if ((match["teamName1"] == self.eng_team or match["teamName2"] == self.eng_team) and 
+                        (match["teamName1"] == self.opposite_eng_team or match["teamName2"] == self.opposite_eng_team)):
+                        if match.get('matchStatus') == 1:
+                            self.match_id = match["matchId"]
+                            return
+                else:
+                    if (match["teamName1"] == self.eng_team or match["teamName2"] == self.eng_team) and match.get('matchStatus') == 1:
+                        self.match_id = match["matchId"]
+                        return
+            self.wait += 1
+            print(f'\rPlease wait until registration opens ... Do not close the program: {self.wait}', end='')
+            time.sleep(2)
+            res = self.wait_for_registration()
 
     def get_ticket_info(self):
-	    r1 = self.s.get(f'https://tazkarti.com/data/TicketPrice-AvailableSeats-{self.match_id}.json', headers=self.get_headers()).text
-	    r1_data = json.loads(r1)
-	
-	    for category in r1_data['data']:
-	        if category['categoryName'].strip().lower() == self.category_name.strip().lower():
-	            self.category_id = category['categoryId']
-	            self.team_id = category['teamId']
-	            self.match_team_zone_id = category['matchTeamzoneId']
-	            self.price = category['price']
-	            return
-	        else:
-	            for user_seat_location in self.possible_seat_locations:
-	                if user_seat_location.lower() in category['categoryName'].strip().lower() and int(self.team_id) == category['teamId']:
-	                    self.category_id = category['categoryId']
-	                    self.team_id = category['teamId']
-	                    self.match_team_zone_id = category['matchTeamzoneId']
-	                    self.price = category['price']
-	                    return
-	
+        r1 = self.s.get(f'https://tazkarti.com/data/TicketPrice-AvailableSeats-{self.match_id}.json', headers=self.get_headers()).text
+        r1_data = json.loads(r1)
+    
+        for category in r1_data['data']:
+            if category['categoryName'].strip() == self.category_name.strip():
+                self.category_id = category['categoryId']
+                self.team_id = category['teamId']
+                self.match_team_zone_id = category['matchTeamzoneId']
+                self.price = category['price']
+                return
+            else:
+                for user_seat_location in self.possible_seat_locations:
+                    if user_seat_location in category['categoryName'].strip() and int(self.team_id) == category['teamId']:
+                        self.category_id = category['categoryId']
+                        self.team_id = category['teamId']
+                        self.match_team_zone_id = category['matchTeamzoneId']
+                        self.price = category['price']
+                        return
+
     def login_and_book_tickets(self):
         headers = self.get_headers()
         headers.update({'Content-Type': 'application/json'})
@@ -137,32 +164,31 @@ class TicketBooking:
         self.book_seats(tok)
 
     def book_seats(self, token):
-	    print(f"match_id: {self.match_id}, team_id: {self.team_id}, category_id: {self.category_id}, match_team_zone_id: {self.match_team_zone_id}, seats: {self.seats}")
-	
-	    if None in [self.match_id, self.team_id, self.category_id, self.match_team_zone_id, self.seats]:
-	        raise ValueError("Some required values are None. Check the previous steps.")
-	
-	    h2 = self.get_headers()
-	    h2['Authorization'] = f'Bearer {token}'
-	    
-	    json_data2 = {
-	        'stadiumId': 1,
-	        'matchId': int(self.match_id),
-	        'teamId': int(self.team_id),
-	        'lockedSeatsList': [
-	            {
-	                'categoryId': int(self.category_id),
-	                'countSeats': int(self.seats),
-	                'price': self.price,
-	                'matchTeamZoneId': int(self.match_team_zone_id),
-	            },
-	        ],
-	    }
-	    
-	    r2 = self.s.post('https://tazkarti.com/booksprt/BookingTickets/addSeats', headers=h2, json=json_data2).text
-	    self.handle_ticket_response(r2, token)
-	
-
+        print(f"match_id: {self.match_id}, team_id: {self.team_id}, category_id: {self.category_id}, match_team_zone_id: {self.match_team_zone_id}, seats: {self.seats}")
+    
+        if None in [self.match_id, self.team_id, self.category_id, self.match_team_zone_id, self.seats]:
+            raise ValueError("Some required values are None. Check the previous steps.")
+    
+        h2 = self.get_headers()
+        h2['Authorization'] = f'Bearer {token}'
+        
+        json_data2 = {
+            'stadiumId': 1,
+            'matchId': int(self.match_id),
+            'teamId': int(self.team_id),
+            'lockedSeatsList': [
+                {
+                    'categoryId': int(self.category_id),
+                    'countSeats': int(self.seats),
+                    'price': self.price,
+                    'matchTeamZoneId': int(self.match_team_zone_id),
+                },
+            ],
+        }
+        
+        r2 = self.s.post('https://tazkarti.com/booksprt/BookingTickets/addSeats', headers=h2, json=json_data2).text
+        self.handle_ticket_response(r2, token)
+    
     def handle_ticket_response(self, response, token):
         guid = response.split('seatGuid":"')[1].split('"')[0]
         id = response.split('id":')[1].split(',')[0]
@@ -187,7 +213,6 @@ class TicketBooking:
             print(r3)
             print("Registration successful 😍 ✅")
             print("You can now close the program ⚠️")
-
             time.sleep(10*1000)
         elif "This assignFanID assigned before or same category in seats=" in r3:
             print("This user has already been registered in this category ✅")
@@ -199,7 +224,6 @@ if __name__ == '__main__':
     solver = RecaptchaSolver('https://www.google.com/recaptcha/api2/anchor?ar=1&k=6LeypS8dAAAAAGWYer3FgEpGtmlBWBhsnGF0tCGZ&co=aHR0cHM6Ly90YXprYXJ0aS5jb206NDQz&hl=en&v=9pvHvq7kSOTqqZusUzJ6ewaF&size=invisible&cb=376av9ky8egv')
     tok = solver.get_token()
     booking = TicketBooking('data.txt', tok)
-    booking.find_team_info()
     response_text = booking.wait_for_registration()
     booking.get_match_id(response_text)
     booking.get_ticket_info()
