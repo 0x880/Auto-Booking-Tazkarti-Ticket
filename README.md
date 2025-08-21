@@ -12,7 +12,7 @@ You can also download Python and run the `Main.py` file using a Python IDE.
 Place your data in the `data.txt` file in the specified order.
 
 ## Teams Added So Far
-- Ismaily SC
-- Zamalek SC
-- Ahly SC
-- Masry SC
+- Ismaily SC 🟡
+- Zamalek SC ⚪
+- Ahly SC 🔴
+- Masry SC 🟢
